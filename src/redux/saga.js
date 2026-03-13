@@ -1,48 +1,124 @@
-import { call, put, takeEvery } from "redux-saga/effects";
+import { call, put, takeLatest, takeEvery, all, select } from 'redux-saga/effects';
 import {
-  FETCH_PATIENTS, SET_PATIENTS,
-  FETCH_APPOINTMENTS, SET_APPOINTMENTS,
-  FETCH_MEDICAL_RECORDS, SET_MEDICAL_RECORDS
-} from "./actions";
+  FETCH_PATIENTS,
+  SUBMIT_PATIENT_FORM,
+  QUEUE_PATIENT_FORM,
+  PROCESS_OFFLINE_QUEUE,
+  CLEAR_QUEUE_ITEM,
+  FETCH_PATIENT_DETAILS,
+  setPatients,
+  setPatientDetails
+} from './actions';
 
-// Mock API functions for demo purposes
-const mockApiDelay = (data) => new Promise(resolve => setTimeout(() => resolve(data), 600));
+// Mock API calls
+const fetchPatientsApi = (start = 0, limit = 10) =>
+  fetch(`https://dummyjson.com/users?limit=${limit}&skip=${start}`).then(res => res.json());
 
-const fetchPatientsAPI = () => mockApiDelay([
-  { id: 1, name: "John Doe", age: 45, status: "Stable", avatar: "JD" }, 
-  { id: 2, name: "Jane Smith", age: 32, status: "Critical", avatar: "JS" },
-  { id: 3, name: "Alice Johnson", age: 28, status: "Recovering", avatar: "AJ" }
-]);
+const fetchPatientDetailsApi = (id) =>
+  fetch(`https://dummyjson.com/users/${id}`).then(res => res.json());
 
-const fetchAppointmentsAPI = () => mockApiDelay([
-  { id: 101, patientName: "John Doe", time: "10:00 AM", date: "Today", type: "Routine Checkup" },
-  { id: 102, patientName: "Jane Smith", time: "02:30 PM", date: "Today", type: "Urgent Surgery" }
-]);
+const submitPatientFormApi = (data) =>
+  fetch('https://dummyjson.com/users/add', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: { 'Content-type': 'application/json; charset=UTF-8' }
+  }).then(res => res.json());
 
-const fetchRecordsAPI = () => mockApiDelay([
-  { id: 1001, patientName: "John Doe", record: "Blood pressure normal. Prescribed rest.", date: "10/22/2023" },
-  { id: 1002, patientName: "Jane Smith", record: "Severe trauma. Requires immediate operation.", date: "10/24/2023" }
-]);
+const mapUserData = (user) => ({
+  ...user,
+  name: `${user.firstName} ${user.lastName}`,
+  website: user.domain,
+  company: {
+    ...user.company,
+    bs: user.company?.title || 'General Medicine' // Mapping title to bs for UI consistency
+  }
+});
 
-// Worker sagas
-function* fetchPatientsSaga() {
-  const data = yield call(fetchPatientsAPI);
-  yield put({ type: SET_PATIENTS, payload: data });
+// Workers
+function* handleFetchPatients(action) {
+  try {
+    const { page } = action.payload;
+    const existingPatients = yield select(state => state.patients);
+    
+    // Performance Optimization: Check if we already have the data for this "fetch block"
+    // Each block is 10 patients. 
+    // Page 1 (UI 1-5) and Page 2 (UI 6-10) both use the first 10.
+    // So if requesting page 1 or 2, we check if we have 10.
+    const neededIndex = (Math.ceil(page / 2) - 1) * 10;
+    
+    if (existingPatients.length <= neededIndex) {
+      const data = yield call(fetchPatientsApi, neededIndex, 10);
+      const mappedPatients = data.users.map(mapUserData);
+      yield put(setPatients(mappedPatients));
+    }
+  } catch (error) {
+    console.error('Fetch patients failed', error);
+  }
 }
 
-function* fetchAppointmentsSaga() {
-  const data = yield call(fetchAppointmentsAPI);
-  yield put({ type: SET_APPOINTMENTS, payload: data });
+function* handleSubmitPatientForm(action) {
+  const isOnline = navigator.onLine;
+  if (!isOnline) {
+    yield put({ type: QUEUE_PATIENT_FORM, payload: action.payload });
+    alert('Offline: Patient added to queue.');
+    return;
+  }
+
+  try {
+    yield call(submitPatientFormApi, action.payload);
+    alert('Patient registered successfully!');
+  } catch (error) {
+    console.error('Submission failed', error);
+    yield put({ type: QUEUE_PATIENT_FORM, payload: action.payload });
+  }
 }
 
-function* fetchMedicalRecordsSaga() {
-  const data = yield call(fetchRecordsAPI);
-  yield put({ type: SET_MEDICAL_RECORDS, payload: data });
+function* handleProcessQueue() {
+  const queue = yield select(state => state.offlineQueue);
+  for (const patient of queue) {
+    try {
+      yield call(submitPatientFormApi, patient);
+      yield put({ type: CLEAR_QUEUE_ITEM });
+      console.log('Queued patient submitted', patient);
+    } catch (error) {
+      console.error('Queue processing failed for', patient, error);
+      break; // Stop and retry later if network still issues
+    }
+  }
 }
 
-// Root watcher saga
+function* handleFetchPatientDetails(action) {
+  try {
+    const data = yield call(fetchPatientDetailsApi, action.payload.id);
+    yield put(setPatientDetails(mapUserData(data)));
+  } catch (error) {
+    console.error('Fetch patient details failed', error);
+  }
+}
+
+// Watchers
+function* watchPatients() {
+  yield takeLatest(FETCH_PATIENTS, handleFetchPatients);
+}
+
+function* watchFormSubmission() {
+  yield takeEvery(SUBMIT_PATIENT_FORM, handleSubmitPatientForm);
+}
+
+function* watchQueue() {
+  yield takeEvery(PROCESS_OFFLINE_QUEUE, handleProcessQueue);
+}
+
+function* watchPatientDetails() {
+  // takeLatest handles cancellation of previous requests
+  yield takeLatest(FETCH_PATIENT_DETAILS, handleFetchPatientDetails);
+}
+
 export default function* rootSaga() {
-  yield takeEvery(FETCH_PATIENTS, fetchPatientsSaga);
-  yield takeEvery(FETCH_APPOINTMENTS, fetchAppointmentsSaga);
-  yield takeEvery(FETCH_MEDICAL_RECORDS, fetchMedicalRecordsSaga);
+  yield all([
+    watchPatients(),
+    watchFormSubmission(),
+    watchQueue(),
+    watchPatientDetails()
+  ]);
 }

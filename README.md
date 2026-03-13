@@ -1,70 +1,33 @@
-# Getting Started with Create React App
+# MediSaga Healthcare Dashboard
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A high-performance Hospital Management Dashboard built with React, Redux, and Redux-Saga.
 
-## Available Scripts
+## Key Features & Implementation
 
-In the project directory, you can run:
+### 1. Pagination Performance Optimization
+The dashboard fetches patients in "chunks" of 10 to minimize API overhead while the UI only shows 5 per page.
+- **Redux-Saga Logic**: When `FETCH_PATIENTS` is dispatched, the Saga checks the Redux Store's current patient count. It only makes an API call if it needs the next block of 10 records.
+- **Result**: Clicking "Next" for Page 2 is instantaneous as the data is already in the store. Clicking "Next" for Page 3 triggers a fetch for the next 10 (patients 11-20).
 
-### `npm start`
+### 2. Offline Form Submission Queue
+Doctors can register patients even when the network is unstable or disconnected.
+- **Implementation**: The `PatientForm` dispatches a `SUBMIT_PATIENT_FORM` action. 
+- **Saga Logic**: The worker saga checks `navigator.onLine`. 
+    - If **Offline**: Data is added to an `offlineQueue` in the Redux store.
+    - If **Online**: Data is sent immediately.
+- **Syncing**: The `Dashboard` component listens for the `online` window event. When the connection returns, it dispatches `PROCESS_OFFLINE_QUEUE`, which iterates through the queue and submits pending records.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### 3. API Request Cancellation (UX Optimization)
+Slow networks can lead to "race conditions" where a doctor switches records quickly, and an older request might overwrite a newer one.
+- **Redux-Saga Logic**: Uses `takeLatest()` for the `FETCH_PATIENT_DETAILS` action.
+- **Effect**: If a doctor clicks Patient A and then immediately clicks Patient B, the Saga automatically cancels the generator task for Patient A. Only the data for Patient B (the latest click) will ever update the UI.
+- **Visual Feedback**: A 1-second artificial delay is added in `saga.js` to demonstrate the cancellation/loading state clearly.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### 4. Network Reliability Indicator
+The header features a real-time status indicator.
+- **Status Types**: `Online`, `Offline`, or `Slow Network`.
+- **Logic**: Uses `navigator.connection.effectiveType` to detect `2g` or `3g` speeds. If the network is throttled to these speeds, a "Slow Network" warning appears, notifying the user that data fetching may take longer.
 
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
-
-### `npm run build`
-
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
-
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
-
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
-
-### `npm run eject`
-
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
-
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+## Getting Started
+1. `npm install`
+2. `npm start`
