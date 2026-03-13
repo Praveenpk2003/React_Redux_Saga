@@ -1,4 +1,4 @@
-import { call, put, takeLatest, takeEvery, all, select } from 'redux-saga/effects';
+import { call, put, takeLatest, takeEvery, all, select, delay, cancelled } from 'redux-saga/effects';
 import {
   FETCH_PATIENTS,
   SUBMIT_PATIENT_FORM,
@@ -88,11 +88,19 @@ function* handleProcessQueue() {
 }
 
 function* handleFetchPatientDetails(action) {
+  const { id } = action.payload;
+  console.log(`Starting fetch for patient ${id}...`);
   try {
-    const data = yield call(fetchPatientDetailsApi, action.payload.id);
+    yield delay(2000); 
+    const data = yield call(fetchPatientDetailsApi, id);
     yield put(setPatientDetails(mapUserData(data)));
+    console.log(`Successfully fetched patient ${id}`);
   } catch (error) {
-    console.error('Fetch patient details failed', error);
+    console.error(`Fetch patient details failed for ${id}`, error);
+  } finally {
+    if (yield cancelled()) {
+      console.log(`Request for patient ${id} was CANCELLED because a new request started.`);
+    }
   }
 }
 

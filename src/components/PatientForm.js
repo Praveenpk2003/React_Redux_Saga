@@ -1,22 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { submitPatientForm } from '../redux/actions';
 
 const PatientForm = () => {
   const dispatch = useDispatch();
   const offlineQueue = useSelector(state => state.offlineQueue);
-  const [formData, setFormData] = useState({
-    name: '',
-    age: '',
-    disease: '',
-    doctor: ''
+  const [formData, setFormData] = useState(() => {
+    const saved = localStorage.getItem('patientFormData');
+    return saved ? JSON.parse(saved) : {
+      name: '',
+      age: '',
+      disease: '',
+      doctor: ''
+    };
   });
+
+  useEffect(() => {
+    localStorage.setItem('patientFormData', JSON.stringify(formData));
+    console.log('Form data stored in localStorage:', formData);
+  }, [formData]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.name || !formData.age) return;
     dispatch(submitPatientForm(formData));
     setFormData({ name: '', age: '', disease: '', doctor: '' });
+    localStorage.removeItem('patientFormData');
+    console.log('Patient submitted and localStorage cleared');
   };
 
   return (
